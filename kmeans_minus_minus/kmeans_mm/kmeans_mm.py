@@ -389,7 +389,7 @@ class KMeansMM(KMeans, TransformerMixin):
         self.n_iter_ = best_n_iter
         return self
 
-    def predict(self, X):
+    def predict(self, X, mark_outliers=True):
         """Labels input with closest cluster each sample in X belongs to, unless a sample is
         marked as an outlier. Each time .predict() is run on a dataset X, the closest integer to
         X.shape[0] * self.prop_outliers are marked as outliers. In these cases, the samples are
@@ -409,10 +409,12 @@ class KMeansMM(KMeans, TransformerMixin):
             belong in any of the clusters
         """
         labels = super().predict(X)
-        n_outliers = int(X.shape[0] * self.prop_outliers)
-        cluster_center_matrix = self.cluster_centers_[labels, :]
-        outliers = np.argpartition(np.sum((X - cluster_center_matrix) ** 2, axis=1), -n_outliers)[-n_outliers:]
-        labels[outliers] = -1
+
+        if mark_outliers:
+            n_outliers = int(X.shape[0] * self.prop_outliers)
+            cluster_center_matrix = self.cluster_centers_[labels, :]
+            outliers = np.argpartition(np.sum((X - cluster_center_matrix) ** 2, axis=1), -n_outliers)[-n_outliers:]
+            labels[outliers] = -1
 
         return labels.reshape(-1, 1)
 
