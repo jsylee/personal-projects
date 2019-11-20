@@ -1,3 +1,4 @@
+import copy
 import warnings
 
 import numpy as np
@@ -29,6 +30,18 @@ def _check_normalize_sample_weight(sample_weight, X):
         sample_weight *= scale
     return sample_weight
 
+def _validate_center_shape(X, n_centers, centers):
+    """Check if centers is compatible with X and n_centers"""
+    if len(centers) != n_centers:
+        raise ValueError('The shape of the initial centers (%s) '
+                         'does not match the number of clusters %i'
+                         % (centers.shape, n_centers))
+    if centers.shape[1] != X.shape[1]:
+        raise ValueError(
+            "The number of features of the initial centers %s "
+            "does not match the number of features of the data %s."
+            % (centers.shape[1], X.shape[1]))
+
 
 def _k_means_minus_minus(
     X,
@@ -50,12 +63,16 @@ def _k_means_minus_minus(
     X : array-like of floats, shape (n_samples, n_features)
         The observations to cluster.
 
+    sample_weight : array-like, shape (n_samples,)
+        The weights for each observation in X.
+
     n_clusters : int
         The number of clusters to form as well as the number of
         centroids to generate.
 
-    sample_weight : array-like, shape (n_samples,)
-        The weights for each observation in X.
+    prop_outliers : float
+        What proportion of the training dataset X to treat as outliers, and
+        to exclude in each iteration of Lloyd's algorithm.
 
     max_iter : int, optional, default 300
         Maximum number of iterations of the k-means algorithm to run.
@@ -206,22 +223,34 @@ def _k_means_minus_minus(
     return best_labels, best_inertia, best_centers, i + 1
 
 
-class KMeansMM(KMeans, TransformerMixin):
+class KMeansMM(KMeans):
     """
     An sklearn compatible version of K-means-- (read "minus minus"), as described in
     this paper: http://pmg.it.usyd.edu.au/outliers.pdf
 
-    Because this class extends the sklearn KMeans function, it inherits the properties of KMeans that
-    tells sklearn to treat it as a transformer. This class can therefore be integrated into any other
-    sklearn infrastructure, such as pipelines.
+    Because this class extends the sklearn KMeans function, it inherits any tunable properties of that
+    class. This class can also be integrated into any other sklearn infrastructure, such as pipelines
+    and hyperparameter search tools.
+
+    Parameters
+    ----------
+
+    prop_outliers : float
+        What proportion of the training dataset X to treat as outliers, and
+        to exclude in each iteration of Lloyd's algorithm.
+
+    **kwargs : optional keyword parameters
+        Keyword arguments to the sklearn KMeans class. See documentation at
+        https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html.
+
     """
 
-    def __init__(self, prop_outliers=0.1, n_clusters=8, **kwargs):
+    def __init__(self, prop_outliers=0.1, **kwargs):
         self.prop_outliers = prop_outliers
-        super().__init__(n_clusters=n_clusters, **kwargs)
+        super().__init__(**kwargs)
 
     def fit(self, X, y, sample_weight=None):
-        """Compute k-means clustering.
+        """Compute k-means-- clustering.
 
         Parameters
         ----------
@@ -391,6 +420,62 @@ class KMeansMM(KMeans, TransformerMixin):
         self.n_iter_ = best_n_iter
         return self
 
+    def fit_transform(self, X, y=None, **fit_params):
+        """Fit to data, then transform it.
+
+        This is a modified version of the fit_transform function from sklearn.Base.TransformerMixin.
+        It is explicitly written out here rather than inherted from KMeans, because the KMeans
+        fit_transform() function was not meant to be used within supervised contexts.
+        Inheriting from TransformerMixin and forcing a call to that class' fit_transform function
+        also did not solve the problem.
+
+        Fits transformer to X and y with optional parameters fit_params
+        and returns a transformed version of X.
+
+        Parameters
+        ----------
+        X : numpy array of shape [n_samples, n_features]
+            Training set.
+
+        y : numpy array of shape [n_samples]
+            Target values.
+
+        Returns
+        -------
+        X_new : numpy array of shape [n_samples, n_features_new]
+            Transformed array.
+
+        """
+        # fit method of arity 2 (supervised transformation)
+        return self.fit(X, y, **fit_params).transform(X)
+
+    def get_params(self, deep=True):
+        """Overrides superclass get_params() to allow superclass hyperparameters
+          to be returned as well.
+
+          This allows for tuning any parameters from the parent KMeans class
+          without having to list each parameter in the KMeansMM __init__() function.
+          Taken from https://stackoverflow.com/questions/51430484/how-to-subclass-a-vectorizer-in-scikit-learn-without-repeating-all-parameters-in.
+
+        Parameters
+        ----------
+        deep : boolean, optional
+            If True, will return the parameters for this estimator and
+            contained subobjects that are estimators.
+
+        Returns
+        -------
+        params : mapping of string to any
+            Parameter names mapped to their values.
+
+        """
+
+        params = super().get_params(deep)
+        cp = copy.copy(self)
+        cp.__class__ = KMeans
+        params.update(KMeans.get_params(cp, deep))
+        return params
+
     def predict(self, X, mark_outliers=True):
         """Labels input with closest cluster each sample in X belongs to, unless a sample is
         marked as an outlier. Each time .predict() is run on a dataset X, the closest integer to
@@ -419,6 +504,3 @@ class KMeansMM(KMeans, TransformerMixin):
             labels[outliers] = -1
 
         return labels.reshape(-1, 1)
-
-    def fit_transform(self, X, y):
-        return self.fit(X, y).transform(X)
