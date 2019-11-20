@@ -10,6 +10,8 @@ from sklearn.cluster.k_means_ import _k_means, _tolerance, row_norms, effective_
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state, check_array
 from sklearn.utils.validation import _num_samples
+from sklearn.utils._joblib import Parallel
+from sklearn.utils._joblib import delayed
 
 
 def _check_normalize_sample_weight(sample_weight, X):
