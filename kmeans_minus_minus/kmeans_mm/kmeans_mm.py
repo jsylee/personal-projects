@@ -3,7 +3,6 @@ import warnings
 
 import numpy as np
 import scipy.sparse as sp
-from sklearn.base import TransformerMixin
 from sklearn.cluster.k_means_ import KMeans
 from sklearn.cluster.k_means_ import _labels_inertia, _check_sample_weight
 from sklearn.cluster.k_means_ import _init_centroids, squared_norm
